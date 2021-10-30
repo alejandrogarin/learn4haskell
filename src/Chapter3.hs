@@ -52,6 +52,7 @@ provide more top-level type signatures, especially when learning Haskell.
 {-# LANGUAGE InstanceSigs #-}
 
 module Chapter3 where
+import Data.Maybe (listToMaybe)
 
 {-
 =🛡= Types in Haskell
@@ -393,12 +394,12 @@ data Monster = MkMonster { monsterHealth :: Health, monsterAttack :: Attack, mon
 
 fight :: Monster -> Knight -> Gold
 fight m k
-  | knightHealthPoints > monsterHealthPoints = (knightGold k) + (monsterGold m)
+  | knightHealthPoints > monsterHealthPoints = knightGold k + monsterGold m
   | knightHealthPoints == monsterHealthPoints = knightGold k
   | otherwise = -1
   where
       knightHealthPoints = knightHealth k
-      monsterHealthPoints = (monsterHealth m) - (knightAttack k)
+      monsterHealthPoints = monsterHealth m - knightAttack k
 
 {- |
 =🛡= Sum types
@@ -543,7 +544,7 @@ buildHouse city p = case city of
 buildWall :: MagicalCity -> MagicalCity
 buildWall city = case city of
   SimpleCity city -> SimpleCity $ city
-  CastleCity city -> CastleCity $ if (peopleInHouses (castleCityHouses city)) >= 10
+  CastleCity city -> CastleCity $ if peopleInHouses (castleCityHouses city) >= 10
     then city { walls = (walls city) + 1 }
     else city
 
@@ -1003,7 +1004,7 @@ Implement instances of "Append" for the following types:
   ✧ *(Challenge): "Maybe" where append is appending of values inside "Just" constructors
 
 -}
-class (Show a) => Append a where
+class Append a where
     append :: a -> a -> a
 
 newtype Gold' = Gold' Int deriving (Show)
@@ -1012,11 +1013,11 @@ instance Append Gold' where
   append :: Gold' -> Gold' -> Gold'
   append (Gold' a) (Gold' b) = Gold' (a + b)
 
-instance (Show a) => Append [a] where
+instance Append [a] where
   append :: [a] -> [a] -> [a]
-  append a b = a ++ b
+  append = (++)
 
-instance (Append a, Show a) => Append (Maybe a) where
+instance (Append a) => Append (Maybe a) where
   append :: Maybe a -> Maybe a -> Maybe a
   append _ Nothing = Nothing
   append Nothing _ = Nothing
@@ -1080,6 +1081,12 @@ implement the following functions:
  ✦ daysToParty — number of the days to the next Friday
 
 🕯 HINT: to implement this task, derive some standard typeclasses
+
+>>> nextDay Sunday
+Monday
+
+>>> nextDay Monday
+Tuesday
 -}
 
 data DaysOfWeek =
@@ -1095,13 +1102,15 @@ isWeekend :: DaysOfWeek -> Bool
 isWeekend = (>=Saturday)
 
 nextDay :: DaysOfWeek -> DaysOfWeek
-nextDay = succ
+nextDay n
+  | n == Sunday = Monday
+  | otherwise = succ n
 
 daysToParty :: DaysOfWeek -> Int
 daysToParty d
   | d == Saturday = 6
   | d == Sunday = 5
-  | otherwise = (fromEnum Friday) - (fromEnum d)
+  | otherwise = fromEnum Friday - fromEnum d
 
 {-
 =💣= Task 9*
@@ -1187,7 +1196,7 @@ instance T9Fighter T9Knight where
     Just (DrinkPotion (T9Health h)) -> (newKnight { khealth = T9Health $ healthValue (khealth newKnight) + h } , T9Attack 0)
     Just (Spell (T9Defense d)) -> (newKnight { kdefense = T9Defense $ defenseValue (kdefense newKnight) + d }, T9Attack 0)
     where action :: T9Knight -> Maybe T9KnightAction
-          action (T9Knight _ _ _ actions) = if null actions then Nothing else Just (head actions)
+          action (T9Knight _ _ _ actions) = listToMaybe actions
           newKnight :: T9Knight
           newKnight = knight { kactions = nextActions knight}
           nextActions :: T9Knight -> [T9KnightAction]
@@ -1253,28 +1262,29 @@ actionsCount (T9Knight _ _ _ actions) = length actions
 Testing Setup ::
 
 🛡 Tie (Nothing result)
-attacker = T9Knight (T9Health 100) (T9Defense 0) (T9Attack 50) [KnightAttack]
-opponent = T9Monster (T9Health 100) (T9Attack 50) [MonsterAttack]
-battle attacker opponent
-# Nothing
+>>> attacker = T9Knight (T9Health 100) (T9Defense 0) (T9Attack 50) [KnightAttack]
+>>> opponent = T9Monster (T9Health 100) (T9Attack 50) [MonsterAttack]
+>>> battle attacker opponent
+Nothing
 
 🛡 Win Knight
-attacker = T9Knight (T9Health 1000) (T9Defense 0) (T9Attack 50) [DrinkPotion (T9Health 11), KnightAttack]
-opponent = T9Monster (T9Health 10) (T9Attack 50) [MonsterAttack]
-battle attacker opponent
-# Just (Left (T9Knight {khealth = T9Health 961, kdefense = T9Defense 0, kattack = T9Attack 50, kactions = []}))
+>>> attacker = T9Knight (T9Health 1000) (T9Defense 0) (T9Attack 50) [DrinkPotion (T9Health 11), KnightAttack]
+>>> opponent = T9Monster (T9Health 10) (T9Attack 50) [MonsterAttack]
+>>> battle attacker opponent
+Just (Left (T9Knight {khealth = T9Health 961, kdefense = T9Defense 0, kattack = T9Attack 50, kactions = []}))
 
 🛡 Win Monster
-attacker = T9Knight (T9Health 100) (T9Defense 0) (T9Attack 50) [KnightAttack]
-opponent = T9Monster (T9Health 1000) (T9Attack 150) [MonsterAttack]
-battle attacker opponent
-# Just (Right (T9Monster {mhealth = T9Health 950, mattack = T9Attack 150, mactions = []}))
+>>> attacker = T9Knight (T9Health 100) (T9Defense 0) (T9Attack 50) [KnightAttack]
+>>> opponent = T9Monster (T9Health 1000) (T9Attack 150) [MonsterAttack]
+>>> battle attacker opponent
+Just (Right (T9Monster {mhealth = T9Health 950, mattack = T9Attack 150, mactions = []}))
+
 
 🛡 Multiple actions, Win Knight
-attacker = T9Knight (T9Health 100) (T9Defense 0) (T9Attack 99) [KnightAttack, KnightAttack, KnightAttack]
-opponent = T9Monster (T9Health 200) (T9Attack 1) [MonsterAttack, MonsterAttack]
-battle attacker opponent
-# Just (Left (T9Knight {khealth = T9Health 98, kdefense = T9Defense 0, kattack = T9Attack 99, kactions = []}))
+>>> attacker = T9Knight (T9Health 100) (T9Defense 0) (T9Attack 99) [KnightAttack, KnightAttack, KnightAttack]
+>>> opponent = T9Monster (T9Health 200) (T9Attack 1) [MonsterAttack, MonsterAttack]
+>>> battle attacker opponent
+Just (Left (T9Knight {khealth = T9Health 98, kdefense = T9Defense 0, kattack = T9Attack 99, kactions = []}))
 
 -}
 
