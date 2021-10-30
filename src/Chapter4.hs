@@ -114,22 +114,30 @@ As always, try to guess the output first! And don't forget to insert
 the output in here:
 
 >>> :k Char
+Char :: *
 
 >>> :k Bool
+Bool :: *
 
 >>> :k [Int]
+[Int] :: *
 
 >>> :k []
+[] :: * -> *
 
 >>> :k (->)
+(->) :: * -> * -> *
 
 >>> :k Either
+Either :: * -> * -> *
 
 >>> data Trinity a b c = MkTrinity a b c
 >>> :k Trinity
+Trinity :: * -> * -> * -> *
 
 >>> data IntBox f = MkIntBox (f Int)
 >>> :k IntBox
+IntBox :: (* -> *) -> *
 
 -}
 
@@ -282,7 +290,6 @@ data Secret e a
     | Reward a
     deriving (Show, Eq)
 
-
 {- |
 Functor works with types that have kind `* -> *` but our 'Secret' has
 kind `* -> * -> *`. What should we do? Don't worry. We can partially
@@ -293,7 +300,8 @@ values and apply them to the type level?
 -}
 instance Functor (Secret e) where
     fmap :: (a -> b) -> Secret e a -> Secret e b
-    fmap = error "fmap for Box: not implemented!"
+    fmap _ (Trap e) = Trap e
+    fmap f (Reward a) = Reward (f a)
 
 {- |
 =⚔️= Task 3
@@ -305,7 +313,12 @@ typeclasses for standard data types.
 -}
 data List a
     = Empty
-    | Cons a (List a)
+    | Cons a (List a) deriving (Show)
+
+instance Functor List where
+  fmap :: (a -> b) -> List a -> List b
+  fmap _ Empty = Empty
+  fmap f (Cons x xs) = Cons (f x) (fmap f xs)
 
 {- |
 =🛡= Applicative
@@ -472,10 +485,11 @@ Implement the Applicative instance for our 'Secret' data type from before.
 -}
 instance Applicative (Secret e) where
     pure :: a -> Secret e a
-    pure = error "pure Secret: Not implemented!"
+    pure a = Reward a
 
     (<*>) :: Secret e (a -> b) -> Secret e a -> Secret e b
-    (<*>) = error "(<*>) Secret: Not implemented!"
+    Trap f <*> _ = Trap f
+    Reward f <*> a = fmap f a
 
 {- |
 =⚔️= Task 5
@@ -489,6 +503,41 @@ Implement the 'Applicative' instance for our 'List' type.
   type.
 -}
 
+instance Applicative List where
+  pure a = Cons a Empty
+  (<*>) :: List (a -> b) -> List a -> List b
+  Empty <*> _ = Empty
+  Cons f xfs <*> ys = lappend first second
+    where first = fmap f ys
+          second = xfs <*> ys
+
+{-
+-- Examples
+>>> c1 = Cons 1 (Cons 2 Empty)
+>>> f1 = Cons (+1) (Cons (+2) (Cons ((+3)) Empty))
+>>> f1 <*> c1
+Cons 2 (Cons 3 (Cons 3 (Cons 4 (Cons 4 (Cons 5 Empty)))))
+-}
+
+lappend :: List a -> List a -> List a
+lappend Empty Empty = Empty
+lappend xs Empty = xs
+lappend Empty xs = xs
+lappend (Cons x Empty) (Cons y Empty) = Cons x (Cons y Empty)
+lappend (Cons x xs) (Cons y Empty) = Cons x (radd xs y)
+lappend (Cons x xs) (Cons y ys) = ladd x (lappend xs (ladd y ys))
+
+ladd :: a -> List a -> List a
+ladd x Empty = Cons x Empty
+ladd x (Cons y Empty) = Cons x (Cons y Empty)
+ladd x (Cons y ys) = Cons x (Cons y ys)
+
+radd :: List a -> a -> List a
+radd Empty x = Cons x Empty
+radd (Cons y Empty) x = Cons x (Cons y Empty)
+radd (Cons y ys) x  = Cons x (Cons y ys)
+
+-- nested = Cons (Cons 1 (Cons 2 Empty)) Empty
 
 {- |
 =🛡= Monad
@@ -600,7 +649,13 @@ Implement the 'Monad' instance for our 'Secret' type.
 -}
 instance Monad (Secret e) where
     (>>=) :: Secret e a -> (a -> Secret e b) -> Secret e b
-    (>>=) = error "bind Secret: Not implemented!"
+    Trap e >>= _ = Trap e
+    Reward x >>= f = f x
+{-
+>>> rewardToString x = Reward $ show $ x + 1 
+>>> Reward 10 >>= rewardToString
+Reward "11"
+-}
 
 {- |
 =⚔️= Task 7
@@ -611,6 +666,25 @@ Implement the 'Monad' instance for our lists.
   maybe a few) to flatten lists of lists to a single list.
 -}
 
+instance Monad List where
+    (>>=) :: List a -> (a -> List b) -> List b
+    Empty >>= _ = Empty
+    Cons x xs >>= f = lappend (f x) (xs >>= f)
+
+{-
+>>> l1 = Cons 1 Empty
+>>> l1 >>= \x -> Cons (x + 1) Empty
+Cons 2 Empty
+
+>>> l2 = Cons (Cons 1 (Cons 2 Empty)) Empty
+>>> :t l2
+l2 :: Num a => List (List a)
+
+>>> l3 = Cons 1 (Cons 2 Empty)
+>>> l3 >>= \x -> Cons (x + 1) Empty
+Cons 2 (Cons 3 Empty)
+
+-}
 
 {- |
 =💣= Task 8*: Before the Final Boss
@@ -629,7 +703,21 @@ Can you implement a monad version of AND, polymorphic over any monad?
 🕯 HINT: Use "(>>=)", "pure" and anonymous function
 -}
 andM :: (Monad m) => m Bool -> m Bool -> m Bool
-andM = error "andM: Not implemented!"
+andM a b = a >>= \x -> b >>= \y -> pure (x && y)
+
+{-
+>>> andM (Just True) (Just False)
+Just False
+
+>>> andM (Right True) (Right False)
+Right False
+
+>>> andM [True, False] [False, True]
+[False,True,False,False]
+
+>>> andM (Cons True Empty) (Cons False Empty)
+Cons False Empty
+-}
 
 {- |
 =🐉= Task 9*: Final Dungeon Boss
